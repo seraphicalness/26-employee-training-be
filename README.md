@@ -12,6 +12,8 @@
    ```bash
    uvicorn app.main:app --reload
    ```
+## api docs
+- /docs 로 확인 가능 
 
 ## 주요 API 엔드포인트
 - `POST /api/chat/upload`: 파일 업로드 (PDF, Docx 지원)
