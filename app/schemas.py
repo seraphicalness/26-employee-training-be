@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import List, Optional
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
@@ -22,24 +22,54 @@ class ChatRequest(AppBaseModel):
         default=None,
         validation_alias=AliasChoices("file_id", "fileId", "file"),
     )
+    session_id: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "session_id",
+            "sessionId",
+            "conversation_id",
+            "conversationId",
+            "chat_id",
+            "chatId",
+        ),
+    )
 
 
 class ChatResponse(AppBaseModel):
     response: str
     suggestions: Optional[List[str]] = None
+    session_id: Optional[str] = None
+    topic_id: Optional[str] = None
 
 
 class ChatMessageResponse(AppBaseModel):
     id: int
+    session_id: Optional[str] = None
     topic_id: str
     role: str
     content: str
     created_at: Optional[str] = None
 
 
+class ChatSessionResponse(AppBaseModel):
+    session_id: str
+    topic_id: str
+    topic_name: str
+    title: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
 class ChatHistoryResponse(AppBaseModel):
+    session_id: Optional[str] = None
     topic_id: Optional[str] = None
+    topic_name: Optional[str] = None
+    title: Optional[str] = None
     messages: List[ChatMessageResponse] = Field(default_factory=list)
+
+
+class ChatSessionsResponse(AppBaseModel):
+    sessions: List[ChatSessionResponse] = Field(default_factory=list)
 
 
 class UserUpdate(AppBaseModel):

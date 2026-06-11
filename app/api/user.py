@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud
 from ..database import get_db
+from ..llm import normalize_topic_id
 from ..schemas import UserUpdate
 
 router = APIRouter(prefix="/api/user", tags=["user"])
@@ -23,7 +24,7 @@ async def update_me(update: UserUpdate, db: Session = Depends(get_db)):
     if update.department is not None:
         user.department = update.department
     if update.selected_training is not None:
-        user.selected_training = update.selected_training
+        user.selected_training = normalize_topic_id(update.selected_training)
 
     db.commit()
     db.refresh(user)
