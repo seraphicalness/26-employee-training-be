@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import models
@@ -55,10 +56,7 @@ def get_or_create_settings(db: Session) -> models.AppSetting:
     if settings:
         return settings
 
-    settings = models.AppSetting(
-        id=1,
-        personal_instruction=DEFAULT_PERSONAL_INSTRUCTION,
-    )
+    settings = models.AppSetting(id=1, personal_instruction=DEFAULT_PERSONAL_INSTRUCTION)
     db.add(settings)
     db.commit()
     db.refresh(settings)
@@ -100,11 +98,9 @@ def get_latest_topic_prompt(db: Session) -> models.TopicPrompt | None:
 def update_topic_prompt(db: Session, topic_id: str, personal_instruction: str) -> models.TopicPrompt:
     prompt = get_or_create_topic_prompt(db, topic_id)
     settings = get_or_create_settings(db)
-
     prompt.personal_instruction = personal_instruction
     settings.personal_instruction = personal_instruction
     prompt.updated_at = datetime.utcnow()
-
     db.commit()
     db.refresh(prompt)
     return prompt
@@ -142,18 +138,11 @@ def get_chat_session(db: Session, session_id: str | None) -> models.ChatSession 
     return db.get(models.ChatSession, session_id)
 
 
-def get_latest_chat_session(
-    db: Session,
-    topic_id: str | None = None,
-) -> models.ChatSession | None:
+def get_latest_chat_session(db: Session, topic_id: str | None = None) -> models.ChatSession | None:
     query = db.query(models.ChatSession)
     if topic_id:
         query = query.filter(models.ChatSession.topic_id == topic_id)
-
-    return (
-        query.order_by(models.ChatSession.updated_at.desc(), models.ChatSession.created_at.desc())
-        .first()
-    )
+    return query.order_by(models.ChatSession.updated_at.desc(), models.ChatSession.created_at.desc()).first()
 
 
 def get_or_create_chat_session(
@@ -181,12 +170,7 @@ def list_chat_sessions(
     query = db.query(models.ChatSession)
     if topic_id:
         query = query.filter(models.ChatSession.topic_id == topic_id)
-
-    return (
-        query.order_by(models.ChatSession.updated_at.desc(), models.ChatSession.created_at.desc())
-        .limit(limit)
-        .all()
-    )
+    return query.order_by(models.ChatSession.updated_at.desc(), models.ChatSession.created_at.desc()).limit(limit).all()
 
 
 def save_chat_exchange(
@@ -194,6 +178,7 @@ def save_chat_exchange(
     session: models.ChatSession,
     user_message: str,
     assistant_message: str,
+    response_time_ms: int | None = None,
 ) -> tuple[models.ChatMessage, models.ChatMessage]:
     user_row = models.ChatMessage(
         session_id=session.id,
@@ -206,9 +191,9 @@ def save_chat_exchange(
         topic_id=session.topic_id,
         role="assistant",
         content=assistant_message,
+        response_time_ms=response_time_ms,
     )
     session.updated_at = datetime.utcnow()
-
     db.add(user_row)
     db.add(assistant_row)
     db.commit()
@@ -257,5 +242,65 @@ def chat_message_to_dict(message: models.ChatMessage) -> dict:
         "topic_id": message.topic_id,
         "role": message.role,
         "content": message.content,
+        "response_time_ms": message.response_time_ms,
         "created_at": message.created_at.isoformat() if message.created_at else None,
+    }
+
+
+def get_chat_stats(db: Session) -> dict:
+    topic_usage = [
+        {
+            "topic_id": topic_id,
+            "topic_name": TOPIC_NAMES.get(topic_id, topic_id),
+            "message_count": message_count,
+            "session_count": session_count,
+        }
+        for topic_id, message_count, session_count in (
+            db.query(
+                models.ChatSession.topic_id,
+                func.count(models.ChatMessage.id),
+                func.count(func.distinct(models.ChatSession.id)),
+            )
+            .outerjoin(models.ChatMessage, models.ChatMessage.session_id == models.ChatSession.id)
+            .group_by(models.ChatSession.topic_id)
+            .order_by(func.count(models.ChatMessage.id).desc(), models.ChatSession.topic_id.asc())
+            .all()
+        )
+    ]
+
+    repeated_questions = [
+        {
+            "question": question,
+            "count": count,
+        }
+        for question, count in (
+            db.query(models.ChatMessage.content, func.count(models.ChatMessage.id))
+            .filter(models.ChatMessage.role == "user")
+            .group_by(models.ChatMessage.content)
+            .having(func.count(models.ChatMessage.id) > 1)
+            .order_by(func.count(models.ChatMessage.id).desc(), models.ChatMessage.content.asc())
+            .limit(10)
+            .all()
+        )
+    ]
+
+    avg_response_time = (
+        db.query(func.avg(models.ChatMessage.response_time_ms))
+        .filter(
+            models.ChatMessage.role == "assistant",
+            models.ChatMessage.response_time_ms.isnot(None),
+        )
+        .scalar()
+    )
+
+    return {
+        "total_sessions": db.query(func.count(models.ChatSession.id)).scalar() or 0,
+        "total_messages": db.query(func.count(models.ChatMessage.id)).scalar() or 0,
+        "total_user_messages": db.query(func.count(models.ChatMessage.id))
+        .filter(models.ChatMessage.role == "user")
+        .scalar()
+        or 0,
+        "average_response_time_ms": round(float(avg_response_time), 2) if avg_response_time is not None else None,
+        "topic_usage": topic_usage,
+        "repeated_questions": repeated_questions,
     }

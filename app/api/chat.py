@@ -1,3 +1,4 @@
+import time
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
@@ -7,7 +8,7 @@ from .. import crud, models
 from ..database import get_db
 from ..llm import get_chat_response, normalize_topic_id
 from ..request_payload import pick, read_payload
-from ..schemas import ChatHistoryResponse, ChatResponse, ChatSessionsResponse
+from ..schemas import ChatHistoryResponse, ChatResponse, ChatSessionsResponse, ChatStatsResponse
 from ..utils import extract_text_from_file
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -115,6 +116,11 @@ async def get_chat_session(session_id: str, db: Session = Depends(get_db)):
     return _session_history_response(db, session)
 
 
+@router.get("/stats", response_model=ChatStatsResponse)
+async def get_chat_stats(db: Session = Depends(get_db)):
+    return crud.get_chat_stats(db)
+
+
 @router.post("/send", response_model=ChatResponse)
 async def send_message(request: Request, db: Session = Depends(get_db)):
     payload = await read_payload(request)
@@ -159,18 +165,21 @@ async def send_message(request: Request, db: Session = Depends(get_db)):
     if not existing_messages and session.title.endswith("새 대화"):
         session.title = message[:40]
 
+    started_at = time.perf_counter()
     response_text = await get_chat_response(
         topic_id=session.topic_id,
         message=message,
         custom_instruction=prompt.personal_instruction,
         context=context,
     )
+    response_time_ms = int((time.perf_counter() - started_at) * 1000)
 
     crud.save_chat_exchange(
         db,
         session=session,
         user_message=message,
         assistant_message=response_text,
+        response_time_ms=response_time_ms,
     )
     crud.update_selected_training(db, session.topic_id)
 
@@ -179,4 +188,5 @@ async def send_message(request: Request, db: Session = Depends(get_db)):
         suggestions=None,
         session_id=session.id,
         topic_id=session.topic_id,
+        response_time_ms=response_time_ms,
     )

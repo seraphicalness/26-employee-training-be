@@ -40,6 +40,7 @@ class ChatResponse(AppBaseModel):
     suggestions: Optional[List[str]] = None
     session_id: Optional[str] = None
     topic_id: Optional[str] = None
+    response_time_ms: Optional[int] = None
 
 
 class ChatMessageResponse(AppBaseModel):
@@ -48,6 +49,7 @@ class ChatMessageResponse(AppBaseModel):
     topic_id: str
     role: str
     content: str
+    response_time_ms: Optional[int] = None
     created_at: Optional[str] = None
 
 
@@ -66,6 +68,27 @@ class ChatHistoryResponse(AppBaseModel):
     topic_name: Optional[str] = None
     title: Optional[str] = None
     messages: List[ChatMessageResponse] = Field(default_factory=list)
+
+
+class TopicUsageResponse(AppBaseModel):
+    topic_id: str
+    topic_name: str
+    message_count: int
+    session_count: int
+
+
+class RepeatedQuestionResponse(AppBaseModel):
+    question: str
+    count: int
+
+
+class ChatStatsResponse(AppBaseModel):
+    total_sessions: int
+    total_messages: int
+    total_user_messages: int
+    average_response_time_ms: Optional[float] = None
+    topic_usage: List[TopicUsageResponse] = Field(default_factory=list)
+    repeated_questions: List[RepeatedQuestionResponse] = Field(default_factory=list)
 
 
 class ChatSessionsResponse(AppBaseModel):

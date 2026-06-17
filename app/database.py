@@ -36,6 +36,8 @@ def _migrate_sqlite():
         columns = {column["name"] for column in inspector.get_columns("chat_messages")}
         if "session_id" not in columns:
             conn.execute(text("ALTER TABLE chat_messages ADD COLUMN session_id VARCHAR(36)"))
+        if "response_time_ms" not in columns:
+            conn.execute(text("ALTER TABLE chat_messages ADD COLUMN response_time_ms INTEGER"))
 
         if "chat_sessions" not in table_names:
             return
